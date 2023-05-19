@@ -56,6 +56,14 @@ def circuit(x, weights, num_qubits, p=None):
 
 class CustomDataset(Dataset):
     def __init__(self, root_dir, transform=None, size=10):
+        """CustomDataset
+
+        Args:
+            root_dir (_type_): 图片数据的根路径
+                ./root_dir/0/ ./root_dir/1/
+            transform (_type_, optional): _description_. Defaults to None.
+            size (int, optional): 每种数字的size. Defaults to 10.
+        """
         self.root_dir = root_dir
         self.transform = transform
         self.image_paths = []
@@ -70,6 +78,8 @@ class CustomDataset(Dataset):
                     count = count + 1
                     self.image_paths.append(os.path.join(label_dir, filename))
                     self.labels.append(-1 if label == 0 else 1)
+                else:
+                    break
 
     def __len__(self):
         return len(self.image_paths)
@@ -78,16 +88,17 @@ class CustomDataset(Dataset):
         image_path = self.image_paths[idx]
         label = self.labels[idx]
         #image = Image.open(image_path).convert("RGB")
-        image = Image.open(image_path).convert("L")
+        image = Image.open(image_path).convert("L") # 灰度图
         
         if self.transform:
             image = self.transform(image)
 
-        image_array = numpy.array(image).flatten()
+        image_array = numpy.array(image).flatten() # 转为 np.array 并 flatten
         
         return image_array, label
 
 def collate_fn(batch):
+    # 转为 np.array
     images = []
     labels = []
     
@@ -115,6 +126,7 @@ class CustomDataLoader(DataLoader):
         return self
 
     def get_batch(self, indices):
+        # 在 get_batch 时已经转为 np.array 了, 故不再需要 collate_fn
         batch = [self.dataset[idx] for idx in indices]
 
         images, labels = zip(*batch)
@@ -125,29 +137,18 @@ class CustomDataLoader(DataLoader):
     
     def __next__(self):
         if self.current_idx >= len(self.dataset):
-            self.current_idx = 0
+            self.current_idx = 0 # 下一个 epoch 从 0 开始
             raise StopIteration
-            #self.current_idx = 0
 
         batch_indices = self.indices[self.current_idx : self.current_idx + self.batch_size]
-        #batch = [self.dataset[i] for i in batch_indices]
-        batch = self.get_batch(batch_indices)
-        
+        batch = self.get_batch(batch_indices)        
         images, labels = batch
-        #print(f"labels = {labels}")
-        #print(f"images = {images}")
-        #print(f"batch = {batch}")
-        #print(f"self.current_idx = {self.current_idx}")
-        #if self.collate_fn is not None:
-        #    batch = self.collate_fn(batch)
                 
-        if self.num_workers > 0:
+        if self.num_workers > 0: # turn to mini-batch
             num_samples = len(labels)
-            #print(f"num_samples = {num_samples}")
             mini_batch_size = num_samples // self.num_workers
             if mini_batch_size == 0: # num_samples < self.num_workers 的情况
                 mini_batch_size = 1
-            #print(f"mini_batch_size = {mini_batch_size}")
 
             mini_batches = []
             for i in range(self.num_workers):
@@ -167,25 +168,14 @@ class CustomDataLoader(DataLoader):
         return batch
     
     def shuffle_indices(self):
-        #print(f"before: {self.indices}")
         torch.manual_seed(self.seed)  # Set a seed for reproducibility
         self.indices = torch.randperm(len(self.dataset), out=torch.tensor(self.indices))
-        #print(f"after {self.indices}")
 
     def shuffle_batch(self, batch):
         for mini_batch in batch:
             torch.manual_seed(0)  # Set a seed for reproducibility
             torch.randperm(len(mini_batch), out=torch.tensor(mini_batch))
-            
-class temp_MnistClassifierNoiseDriftJax(MnistClassifierJax):
-    def __init__(self, num_qubits=6, num_layers=3, p=None, dev=None, weights=None, best_weights=None, 
-                 opt=None, batch_size=10, lr=0.01, qml_circuit=circuit, 
-                 img_size=8, test_sub_size=10, train_sub_size=100):
-        super().__init__(num_qubits, num_layers, p, dev, weights, best_weights, opt, batch_size, lr, qml_circuit, img_size, test_sub_size, train_sub_size)
-        self.img_size = img_size
-        self.test_sub_size = test_sub_size
-        self.train_sub_size = train_sub_size
-        
+                
 def sum_data(data_list):
     {'bias': [(np.array([[2.2250463e-06, 2.2250463e-06, 2.2250463e-06, 2.2250463e-06, 2.2250463e-06, 2.2250463e-06],
                          [2.1467455e-05, 2.1467455e-05, 2.1467455e-05, 2.1467455e-05, 2.1467455e-05, 2.1467455e-05],
@@ -195,7 +185,7 @@ def sum_data(data_list):
               (np.array([[-0.5139741, -0.5180101, -0.5182382]]), np.array([-1.0336919]))
               ], # 第二层的 w, b
      
-    }
+    } # 每个 data 的结构
     result = {}  # 存储求和结果的字典
     
     for data in data_list:
@@ -204,7 +194,7 @@ def sum_data(data_list):
                 # 如果结果字典中不存在该键，则直接将键值对添加到结果字典中
                 result[key] = value
             else:
-                # 如果结果字典中已存在该键，则对应的数组进行相加操作
+                # 如果结果字典中已存在该键，则对应的数组进行相加操作(0对应w, 1对应b)
                 result[key] = [(result[key][i][0] + value[i][0], result[key][i][1] + value[i][1]) for i in range(len(value))]
     
     return result
@@ -213,7 +203,7 @@ class ClassifierModel(ClassifierNoiseDriftJax):
     def __init__(self, num_qubits=6, num_layers=3, p=None, dev=None, weights=None, best_weights=None, 
                  opt=None, batch_size=16, lr=0.01, qml_circuit=circuit,
                  img_size=8, test_sub_size=10, train_sub_size=100, num_workers=10):
-        """_summary_
+        """每个 DataWorker 会初始化一个 Model
 
         Args:
             num_qubits (int, optional): _description_. Defaults to 6.
@@ -245,7 +235,7 @@ class MnistClassifierNoiseDriftJax(ClassifierNoiseDriftJax):
     def __init__(self, num_qubits=2, num_layers=3, p=None, dev=None, weights=None, best_weights=None, 
                  opt=None, batch_size=16, lr=0.01, qml_circuit=circuit,
                  img_size=8, test_sub_size=10, train_sub_size=100, num_workers=10):
-        """_summary_
+        """继承自 classifier_drift.py, 并定制化 load_data 和 train
 
         Args:
             num_qubits (int, optional): _description_. Defaults to 6.
@@ -283,86 +273,14 @@ class MnistClassifierNoiseDriftJax(ClassifierNoiseDriftJax):
         self.test_dataloader = CustomDataLoader(test_dataset, batch_size=self.batch_size, shuffle=False, collate_fn=collate_fn, num_workers=self.num_workers)
         self.train_dataloader = CustomDataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, collate_fn=collate_fn, num_workers=self.num_workers)
         
-        return
+        return  
     
-    def train(self, epochs=10, num_workers=10):
+    def train(self, epochs=10):
         def epochTest(dataloader, weights):
             print(f"start test")
             batch_losses, test_acc = [], 0
             for batch_idx, (data, target) in enumerate(dataloader):
-                outputs = vmap(self.noise_mapping_classifier, in_axes=(None, 0, None), out_axes=0)(weights, data, self.p)
-                #predictions = self.predict(data)
-                predictions = jnp.sign(outputs)
-                batch_acc = self.num_success(target, predictions)
-                #batch_loss = optax.l2_loss(outputs - target).mean()
-                
-                #batch_losses.append(batch_loss)
-                test_acc = test_acc + batch_acc
-                
-            test_loss = np.mean(batch_losses)
-            return test_loss, test_acc
-        #for batch_idx, (data, target) in enumerate(self.test_dataloader):
-        #    print(f"In test [{batch_idx}]: {target}")
-        self.init_weights() # in classifier_drift.py
-        
-        for epoch in range(epochs):
-            try:
-                for batch_idx, batch in enumerate(self.test_dataloader):
-                    #data, target = batch
-                    print(f"[{epoch}]/[{batch_idx}]: ")
-                    mini_batches = [batch[i] for i in range(self.num_workers)]
-                    for i in range(self.num_workers):
-                        data, target = mini_batches[i]
-                        print(f"[{epoch}]/[{batch_idx}]/[{i}]: {target}")
-            except StopIteration:
-                print(f"epoch[{epoch}] finish")
-
-        ps = ParameterServer.remote(initial_params=self.weights, lr=1e-2)
-        workers = [DataWorker.remote(id=i+1, p=0.01) for i in range(self.num_workers)]
-        
-        
-        current_weights = ps.get_params.remote()
-        for epoch in range(epochs):
-            for batch_idx, batch in enumerate(self.train_dataloader):
-                #data, target = batch
-                print(f"[{epoch}]/[{batch_idx}]: ")
-                #mini_batches = [batch[i] for i in range(self.num_workers)]
-                #gradients = [workers[i].compute_gradients.remote(current_weights, self.cost, mini_batches[i]) for i in range(self.num_workers)]
-                
-                gradients = [workers[i].compute_gradients.remote(current_weights, self.cost, batch[i]) for i in range(self.num_workers)]
-                gradients_value = ray.get(gradients)
-                #print(f"{type(gradients_value)}") # list
-                #for i in range(self.num_workers):
-                #    print(f"[{epoch}]/[{batch_idx}]/[{i}]: {gradients_value[i]}")
-                summed_gradients = sum_data(gradients_value)
-                #print(f"{summed_gradients}")
-                current_weights = ps.apply_gradients.remote(summed_gradients)
-            test_loss, test_acc = epochTest(self.test_dataloader_4_eval, ray.get(current_weights))
-            print(f"Epoch [{epoch+1}/{epochs}]\t train_loss: test_loss: {test_loss:0.5f}\t test_acc: {test_acc}/{2*self.test_sub_size}")
-        test_loss, test_acc = epochTest(self.test_dataloader_4_eval, ray.get(current_weights))
-        print(f"train_loss: test_loss: {test_loss:0.5f}\t test_acc: {test_acc}/{2*self.test_sub_size}")
-            
-                
-                    
-        #ps = ParameterServer.remote(initial_params=self.weights, lr=1e-2)
-        #workers = [DataWorker.remote(id=i+1, p=0.01, data_loader=self.test_dataloader) for i in range(self.num_workers)]
-        #
-        #ids = ray.get([w.get_id.remote() for w in workers])
-        #print(f"workers: {ids}")
-        #
-        #current_weights = ps.get_params.remote()
-        #for i in range(epochs):
-        #    gradients = [worker.compute_gradients.remote(current_weights, self.cost) for worker in workers]
-        #    
-        #    test_targets = ray.get(gradients)
-        #    print(f"In epochs {epochs}: {test_targets}")        
-    
-    def train2(self, epochs=10, num_workers=10):
-        def epochTest(dataloader, weights):
-            print(f"start test")
-            batch_losses, test_acc = [], 0
-            for batch_idx, (data, target) in enumerate(dataloader):
-                print(f"{[batch_idx]}")
+                print(f"[{batch_idx+1}/{len(dataloader)}]")
                 outputs = vmap(self.noise_mapping_classifier, in_axes=(None, 0, None), out_axes=0)(weights, data, self.p)
                 predictions = jnp.sign(outputs)
                 batch_acc = self.num_success(target, predictions)
@@ -379,20 +297,16 @@ class MnistClassifierNoiseDriftJax(ClassifierNoiseDriftJax):
         ps = ParameterServer.remote(initial_params=self.weights, lr=1e-2)
         workers = [DataWorker.remote(id=i+1, p=0.01) for i in range(self.num_workers)]
         
-        
+        # train
         current_weights = ps.get_params.remote()
         for epoch in range(epochs):
             test_loss, test_acc = epochTest(self.test_dataloader_4_eval, ray.get(current_weights))
-            print(f"Epoch [{epoch}/{epochs}]\t train_loss: test_loss: {test_loss:0.5f}\t test_acc: {test_acc}/{2*self.test_sub_size}")
+            print(f"Epoch [{epoch}/{epochs}]\t test_loss: {test_loss:0.5f}\t test_acc: {test_acc}/{2*self.test_sub_size}")
             for batch_idx, batch in enumerate(self.train_dataloader):
-                #data, target = batch
-                print(f"[{epoch}]/[{batch_idx}]: ")
+                print(f"[{epoch+1}/{epochs}] | [{batch_idx+1}] ")
                 #mini_batches = [batch[i] for i in range(self.num_workers)]
-                #gradients = [workers[i].compute_gradients.remote(current_weights, self.cost, mini_batches[i]) for i in range(self.num_workers)]
-                
                 gradients = [workers[i].compute_gradients.remote(current_weights, batch[i]) for i in range(self.num_workers)]
-                gradients_value = ray.get(gradients)
-                #print(f"{type(gradients_value)}") # list
+                gradients_value = ray.get(gradients) # 同步
                 #for i in range(self.num_workers):
                 #    print(f"[{epoch}]/[{batch_idx}]/[{i}]: {gradients_value[i]}")
                 summed_gradients = sum_data(gradients_value)
@@ -400,12 +314,18 @@ class MnistClassifierNoiseDriftJax(ClassifierNoiseDriftJax):
                 current_weights = ps.apply_gradients.remote(summed_gradients)
             
         test_loss, test_acc = epochTest(self.test_dataloader_4_eval, ray.get(current_weights))
-        print(f"train_loss: test_loss: {test_loss:0.5f}\t test_acc: {test_acc}/{2*self.test_sub_size}")
+        print(f"Final Test | test_loss: {test_loss:0.5f}\t test_acc: {test_acc}/{2*self.test_sub_size}")
     
 
 @ray.remote
 class ParameterServer(object):
     def __init__(self, initial_params=None, lr=1e-2):
+        """ParameterServer
+
+        Args:
+            initial_params (_type_, optional): _description_. Defaults to None.
+            lr (_type_, optional): _description_. Defaults to 1e-2.
+        """
         self.params = initial_params
         self.optimizer = optax.adam(learning_rate=lr)
         self.opt_state = self.optimizer.init(self.params)
@@ -419,16 +339,14 @@ class ParameterServer(object):
         return self.params
 
 @ray.remote
-def worker_task(weights, cost_fn, mini_batch, p):
-    data, target = mini_batch
-    loss_value, gradient = jax.value_and_grad(cost_fn)(weights, data, target, p)
-    
-    return gradient
-    
-
-@ray.remote
 class DataWorker(object):
     def __init__(self, id=0, p=None):
+        """DataWorker
+
+        Args:
+            id (int, optional): _description_. Defaults to 0.
+            p (_type_, optional): p for the model. Defaults to None.
+        """
         self.id = id
         self.p = p
         self.model = ClassifierModel()
@@ -437,64 +355,27 @@ class DataWorker(object):
         #self.model.set_weights(weights)
         data, target = mini_batch
         loss_value, gradient = jax.value_and_grad(self.model.cost)(weights, data, target, self.p)
-        #loss_value, gradient = jax.value_and_grad(self.cost)(self.weights, data, target, self.p)
-        
-        #data, target = mini_batch
-        #loss_value, gradient = jax.value_and_grad(cost_fn)(weights, data, target, self.p)
-        
+
         return gradient
-        
-        #self.model.set_weights(weights)
-        #try:
-        #    data, target = next(self.data_iterator)
-        #except StopIteration:  # When the epoch ends, start a new epoch.
-        #    self.data_iterator = iter(get_data_loader()[0])
-        #    data, target = next(self.data_iterator)
-        #self.model.zero_grad()
-        #output = self.model(data)
-        #loss = F.nll_loss(output, target)
-        #loss.backward()
-        #return self.model.get_gradients()
         
     def get_id(self):
         return self.id
 
-"""
-def main():
-    initial_params = ... # Initialize your model's parameters here
-    ps = ParameterServer.remote(initial_params)
-    data_loader = torch.utils.data.DataLoader(...) # Initialize your DataLoader here
-
-    # Define your model and loss function here
-    def model(params, inputs):
-        ...
-    
-    def loss_fn(params, inputs):
-        ...
-    
-    # Use Jax to compute the gradient of the loss function
-    compute_gradient = jit(grad(loss_fn))
-
-    # Launch worker tasks
-    worker_results = [worker_task.remote(ps, data_loader, compute_gradient, initial_params) for _ in range(num_workers)]
-    
-    # Get the final model parameters
-    final_params = ray.get(ps.get_params.remote())
-    print("Final model parameters: ", final_params)
-"""
-
 def test():
-    
-    lr = 1e-1
+    num_qubits = 6
     num_layers = 3
     p = 0.01
+    lr = 1e-1
     num_workers = 10
     test_sub_size = 20
+    train_sub_size = 100
     batch_size = 20
-    classifier = MnistClassifierNoiseDriftJax(num_qubits=num_qubits, num_layers=num_layers, p=p, lr=lr, batch_size=batch_size, num_workers=num_workers, test_sub_size=test_sub_size)
+    classifier = MnistClassifierNoiseDriftJax(num_qubits=num_qubits, num_layers=num_layers, p=p, lr=lr, batch_size=batch_size, 
+                                              num_workers=num_workers, test_sub_size=test_sub_size, train_sub_size=train_sub_size)
     classifier.load_data()
-    classifier.train2(epochs=2, num_workers=10)
-    ray.shutdown()
+    classifier.train(epochs=20)
+    
+    ray.shutdown() # Clean up Ray resources and processes before the next example.
 
 if __name__ == "__main__":
     #main()
