@@ -1,1 +1,2 @@
-# QML_code
+# QML
+Distributed quantum machine learning
