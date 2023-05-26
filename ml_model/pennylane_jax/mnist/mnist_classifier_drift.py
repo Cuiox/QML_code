@@ -26,8 +26,8 @@ from pennylane import numpy as np
 from pennylane.optimize import NesterovMomentumOptimizer
 
 from templates.layers.naive_strong_entangler import StronglyEntanglingLayers
-from ml_model.pennylane.mnist.mnist_classifier_jax import MnistClassifierJax
-from ml_model.pennylane.classifier_drift import ClassifierNoiseDriftJax
+from ml_model.pennylane_jax.mnist.mnist_classifier_jax import MnistClassifierJax
+from ml_model.pennylane_jax.classifier_drift import ClassifierNoiseDriftJax
 
 from sklearn.utils import shuffle
 

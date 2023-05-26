@@ -1,11 +1,10 @@
 import pennylane as qml
 from pennylane import numpy as np
 from pennylane.optimize import NesterovMomentumOptimizer
-from ml_model.pennylane.classifier_jax import circuit
-from ml_model.pennylane.classifier_jax import circuit
+#from ml_model.pennylane.classifier_jax import circuit
 
 from templates.layers.naive_strong_entangler import StronglyEntanglingLayers
-from ml_model.pennylane.classifier_jax import ClassifierJax
+from ml_model.pennylane_jax.classifier_jax import ClassifierJax
 
 from sklearn.utils import shuffle
 

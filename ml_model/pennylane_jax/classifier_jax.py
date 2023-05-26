@@ -3,7 +3,7 @@ from pennylane import numpy as np
 from pennylane.optimize import NesterovMomentumOptimizer
 
 from templates.layers.naive_strong_entangler import StronglyEntanglingLayers
-from ml_model.pennylane.classifier import Classifier
+from ml_model.pennylane_jax.classifier import Classifier
 
 import jax
 from jax import vmap
